@@ -13,13 +13,23 @@ export default function SidePanel() {
 
   const [oneLinerStream, setOneLinerStream] = useState('')
   const [fastData, setFastData]     = useState(null)
+  
   const [deepData, setDeepData]     = useState(null)
+  const [followUpData, setFollowUpData] = useState(null)
+  
   const [loading, setLoading]       = useState(false)
+  const [dimLoading, setDimLoading] = useState(false)
+  const [followLoading, setFollowLoading] = useState(false)
+  
   const [analogyText, setAnalogyText] = useState('')
   const [showAnalogy, setShowAnalogy] = useState(false)
   const [saved, setSaved]           = useState(false)
 
+  const [customQuery, setCustomQuery] = useState('')
+  const [activeDimension, setActiveDimension] = useState(null)
+
   const fastBufRef = useRef('')
+  const isFollowUpRef = useRef(false)
 
   const handleFastChunk = useCallback((chunk) => {
     fastBufRef.current += chunk
@@ -37,14 +47,23 @@ export default function SidePanel() {
 
   const handleDeepDone = useCallback((data) => {
     const d = Array.isArray(data) ? data[0] : data
-    setDeepData(d)
-    setLoading(false)
+    if (isFollowUpRef.current) {
+      setFollowUpData(d)
+      setFollowLoading(false)
+      isFollowUpRef.current = false
+    } else {
+      setDeepData(d)
+      setDimLoading(false)
+      setLoading(false)
+    }
   }, [])
 
   const handleAnalogyUpdate = useCallback((text) => setAnalogyText(text), [])
   const handleError = useCallback((msg) => {
     console.error('Stream error:', msg)
     setLoading(false)
+    setDimLoading(false)
+    setFollowLoading(false)
   }, [])
 
   const { fire, fireAnalogy } = useStream({
@@ -61,10 +80,13 @@ export default function SidePanel() {
     setOneLinerStream('')
     setFastData(null)
     setDeepData(null)
+    setFollowUpData(null)
     setAnalogyText('')
     setShowAnalogy(false)
     setSaved(false)
+    setActiveDimension(null)
     setLoading(true)
+    isFollowUpRef.current = false
     fire(selectedTerm, selectedContext, selectedPage)
 
     const timeout = setTimeout(() => setLoading(false), 15000)
@@ -75,6 +97,25 @@ export default function SidePanel() {
     setShowAnalogy(true)
     setAnalogyText('')
     fireAnalogy(selectedTerm)
+  }
+
+  const handleDimensionClick = (dim) => {
+    setActiveDimension(dim)
+    setDimLoading(true)
+    isFollowUpRef.current = false
+    fire(selectedTerm, selectedContext, selectedPage, { dimension: dim })
+  }
+
+  const handleFollowUpSubmit = (e) => {
+    e.preventDefault()
+    if (!customQuery.trim() || followLoading) return
+    
+    setFollowUpData(null)
+    setFollowLoading(true)
+    isFollowUpRef.current = true
+    
+    fire(selectedTerm, selectedContext, selectedPage, { custom_query: customQuery })
+    setCustomQuery('')
   }
 
   const onSave = () => {
@@ -121,10 +162,10 @@ export default function SidePanel() {
   }
 
   return (
-    <div className="h-full overflow-y-auto flex flex-col bg-[#0b0f19] border-l border-slate-800 relative space-y-6 pb-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+    <div className="h-full overflow-y-auto flex flex-col bg-[#0b0f19] border-l border-slate-800 relative space-y-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
       
       {/* 1. Term Header */}
-      <div className="sticky top-0 z-10 px-6 pt-8 pb-6 border-b border-white/5 bg-[#0b0f19]/90 backdrop-blur-md flex flex-col gap-4">
+      <div className="sticky top-0 z-30 px-6 pt-8 pb-6 border-b border-white/5 bg-[#0b0f19]/90 backdrop-blur-md flex flex-col gap-4">
         <div className="flex justify-between items-start">
           <h1 className="text-3xl font-bold text-slate-100 tracking-tight leading-tight">
             {selectedTerm}
@@ -140,8 +181,14 @@ export default function SidePanel() {
         </div>
       </div>
 
-      <div className="flex flex-col space-y-6 px-6 flex-1">
+      <div className="flex flex-col space-y-6 px-6 flex-1 pb-4 relative">
         
+        {dimLoading && (
+          <div className="absolute inset-0 z-20 bg-[#0b0f19]/50 backdrop-blur-[2px] flex items-center justify-center rounded-xl mx-6 mb-6">
+            <div className="w-8 h-8 rounded-full border-2 border-slate-600 border-t-indigo-500 animate-spin" />
+          </div>
+        )}
+
         {/* 2. The 1-Liner Card */}
         <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 flex flex-col gap-3 shadow-lg shadow-black/20">
           <div className="flex items-start gap-3">
@@ -169,7 +216,7 @@ export default function SidePanel() {
               <div className="flex flex-col gap-2">
                 <h3 className="text-[10px] font-bold tracking-widest text-indigo-400 uppercase flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                  Static Base
+                  {activeDimension ? `${activeDimension.split(' ')[1]} Focus` : 'Static Base'}
                 </h3>
                 <div className="text-sm text-slate-300 leading-relaxed prose prose-invert prose-sm ml-3 border-l border-slate-700/50 pl-3">
                   <ReactMarkdown>{deepData.static_fact}</ReactMarkdown>
@@ -256,26 +303,6 @@ export default function SidePanel() {
           </div>
         )}
 
-        {/* Deep Exploration Action Dock */}
-        {(fastData || oneLinerStream) && (
-          <div className="grid grid-cols-1 gap-2 pt-2">
-            <div className="text-[10px] font-bold tracking-widest text-slate-500 uppercase mb-1">
-              Deep Exploration
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button className="px-3 py-2.5 rounded-lg bg-slate-800/40 border border-slate-700/50 text-slate-300 text-[11px] font-semibold hover:bg-slate-700 hover:text-white hover:scale-[1.02] active:scale-95 transition-all text-left flex items-center gap-2 shadow-sm">
-                <span className="text-indigo-400 text-sm">📊</span> Mains Perspective
-              </button>
-              <button className="px-3 py-2.5 rounded-lg bg-slate-800/40 border border-slate-700/50 text-slate-300 text-[11px] font-semibold hover:bg-slate-700 hover:text-white hover:scale-[1.02] active:scale-95 transition-all text-left flex items-center gap-2 shadow-sm">
-                <span className="text-amber-400 text-sm">⏳</span> Timeline Map
-              </button>
-              <button className="col-span-2 px-3 py-2.5 rounded-lg bg-slate-800/40 border border-slate-700/50 text-slate-300 text-[11px] font-semibold hover:bg-slate-700 hover:text-white hover:scale-[1.02] active:scale-95 transition-all text-center flex items-center justify-center gap-2 shadow-sm">
-                <span className="text-teal-400 text-sm">💡</span> Cross-Reference Concepts
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* 6. Curiosity Chain */}
         {deepData?.curiosity_chain?.length > 0 && (
           <div className="pt-2">
@@ -291,10 +318,63 @@ export default function SidePanel() {
             </div>
           </div>
         )}
+
+        {/* Dimensional Selector Grid */}
+        {(fastData || oneLinerStream) && (
+          <div className="flex flex-col gap-3 pt-4 border-t border-white/5 mt-2">
+            <div className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+              Analytical Dimensions
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {['🗺️ Map/Geo', '📊 Diagram/Flow', '📰 Current Affairs', '🧠 Mnemonic'].map(dim => (
+                <button 
+                  key={dim}
+                  onClick={() => handleDimensionClick(dim)}
+                  className={`px-3 py-2.5 rounded-lg border text-[11px] font-semibold transition-all text-left flex items-center gap-2 shadow-sm ${activeDimension === dim ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300' : 'bg-slate-800/40 border-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white hover:scale-[1.02] active:scale-95'}`}
+                >
+                  {dim}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {['⚖️ Legal/Polity', '💰 Socio-Economic', '🏛️ Art & Culture', '🔍 Historiography/Debates', '🌱 Eco/Environment', '📝 PYQ & Mains Focus'].map(dim => (
+                <button 
+                  key={dim}
+                  onClick={() => handleDimensionClick(dim)}
+                  className={`px-3 py-2.5 rounded-lg border text-[11px] font-semibold transition-all text-left flex items-center gap-2 shadow-sm ${activeDimension === dim ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300' : 'bg-slate-800/40 border-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white hover:scale-[1.02] active:scale-95'}`}
+                >
+                  {dim}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Follow-Up Insights Card */}
+        {(followLoading || followUpData) && (
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-violet-900/40 shadow-lg shadow-black/20 relative overflow-hidden mt-2">
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-violet-500"></div>
+            <h3 className="text-[11px] font-bold tracking-widest text-violet-400 uppercase mb-3 flex items-center gap-2">
+              <span className="text-sm">💬</span> Follow-Up Insights
+            </h3>
+            {followLoading ? (
+               <div className="flex items-center gap-2 text-violet-400 text-sm animate-pulse">
+                 <span className="w-4 h-4 rounded-full border-2 border-violet-500/30 border-t-violet-500 animate-spin" />
+                 Synthesizing insight...
+               </div>
+            ) : (
+               <div className="flex flex-col gap-4 text-sm text-violet-100/90 leading-relaxed prose prose-invert prose-sm ml-3 border-l border-violet-900/50 pl-3">
+                  {followUpData?.static_fact && <ReactMarkdown>{followUpData.static_fact}</ReactMarkdown>}
+                  {followUpData?.why_examiner_asks && <ReactMarkdown>{followUpData.why_examiner_asks}</ReactMarkdown>}
+               </div>
+            )}
+          </div>
+        )}
+
       </div>
 
       {(fastData || oneLinerStream) && (
-        <div className="px-6 mt-auto pt-6 flex flex-col gap-3 shrink-0">
+        <div className="px-6 mt-auto pt-6 flex flex-col gap-3 shrink-0 sticky bottom-0 bg-[#0b0f19]/90 backdrop-blur-md pb-6 border-t border-slate-800/50 z-30">
           {!showAnalogy && (
             <button
               className="w-full py-3.5 rounded-xl bg-slate-800/40 border border-slate-700 text-slate-300 text-sm font-semibold hover:bg-slate-700 hover:text-white hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
@@ -315,6 +395,23 @@ export default function SidePanel() {
           >
             {saved ? '✓ Saved to Revision Bookmarks' : '＋ Add to Revision Bookmarks'}
           </button>
+
+          <form onSubmit={handleFollowUpSubmit} className="relative mt-2 flex">
+            <input
+              type="text"
+              value={customQuery}
+              onChange={e => setCustomQuery(e.target.value)}
+              placeholder={`Ask anything missing about ${selectedTerm}...`}
+              className="bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl px-4 py-3 text-sm w-full outline-none placeholder-slate-500 text-slate-200 transition-colors shadow-inner"
+            />
+            <button 
+              type="submit"
+              disabled={!customQuery.trim() || followLoading}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all flex items-center justify-center ${customQuery.trim() ? 'text-violet-400 hover:bg-violet-500/20' : 'text-slate-600'}`}
+            >
+              <span className="text-lg leading-none">✦</span>
+            </button>
+          </form>
         </div>
       )}
     </div>

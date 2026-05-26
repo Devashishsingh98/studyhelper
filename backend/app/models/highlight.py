@@ -7,13 +7,13 @@ class HighlightRequest(BaseModel):
     context_snippet: Optional[str] = ""  # Surrounding sentence(s) from the PDF, optional
     page_number: Optional[int] = 1        # Optional page number
     session_id: Optional[str] = None
-    dimension: Optional[str] = None
-    custom_query: Optional[str] = None
     exam_profile: dict = {
         "exam": "UPSC",
         "stage": "prelims",
         "weak_subjects": []
     }
+    dimension: Optional[str] = None
+    custom_query: Optional[str] = None
 
 
 class FastLayerResponse(BaseModel):

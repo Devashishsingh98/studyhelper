@@ -2,21 +2,9 @@ import { useEffect, useRef, useCallback } from 'react'
 
 const BACKEND = '/highlight'
 
-/**
- * useStream — fires two parallel SSE fetches (/fast and /deep) on demand.
- * onFastChunk(rawChunk)  — called on every raw text chunk from /fast stream
- * onFastDone(parsed)     — called with parsed JSON when fast_done event fires
- * onDeepChunk(rawChunk)  — called on every raw text chunk from /deep stream
- * onDeepDone(parsed)     — called with parsed JSON when deep_done event fires
- * onAnalogydone(text)    — called with accumulating plain-text from /analogy
- */
 export function useStream({ onFastChunk, onFastDone, onDeepChunk, onDeepDone, onAnalogydone, onError }) {
   const abortRef = useRef(null)
 
-  /**
-   * Reads an SSE stream from url.
-   * Parses lines into { event, data } pairs and dispatches to onChunk / onDone.
-   */
   const readSSE = useCallback(async (url, body, onChunk, onDone, signal) => {
     try {
       const res = await fetch(url, {
@@ -38,7 +26,7 @@ export function useStream({ onFastChunk, onFastDone, onDeepChunk, onDeepDone, on
 
         buf += decoder.decode(value, { stream: true })
         const lines = buf.split('\n')
-        buf = lines.pop() ?? ''   // keep incomplete last line
+        buf = lines.pop() ?? ''
 
         for (const line of lines) {
           if (line.startsWith('event:')) {
@@ -62,8 +50,7 @@ export function useStream({ onFastChunk, onFastDone, onDeepChunk, onDeepDone, on
     }
   }, [onError])
 
-  const fire = useCallback(async (term, context, page) => {
-    // Abort any in-flight request
+  const fire = useCallback(async (term, context, page, opts = {}) => {
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -72,13 +59,19 @@ export function useStream({ onFastChunk, onFastDone, onDeepChunk, onDeepDone, on
       term,
       context_snippet: context,
       page_number: page,
+      dimension: opts.dimension,
+      custom_query: opts.custom_query,
     })
 
-    // Fire fast and deep in parallel
-    await Promise.all([
-      readSSE(`${BACKEND}/fast`, body, onFastChunk, onFastDone, ctrl.signal),
-      readSSE(`${BACKEND}/deep`, body, onDeepChunk, onDeepDone, ctrl.signal),
-    ])
+    // Fire fast and deep in parallel unless it's a follow-up which we can just route to deep
+    if (opts.custom_query) {
+      await readSSE(`${BACKEND}/deep`, body, onDeepChunk, onDeepDone, ctrl.signal)
+    } else {
+      await Promise.all([
+        readSSE(`${BACKEND}/fast`, body, onFastChunk, onFastDone, ctrl.signal),
+        readSSE(`${BACKEND}/deep`, body, onDeepChunk, onDeepDone, ctrl.signal),
+      ])
+    }
   }, [readSSE, onFastChunk, onFastDone, onDeepChunk, onDeepDone])
 
   const fireAnalogy = useCallback(async (term) => {
@@ -126,9 +119,8 @@ export function useStream({ onFastChunk, onFastDone, onDeepChunk, onDeepDone, on
     } catch (err) {
       if (err.name !== 'AbortError') onError?.(err?.message ?? 'Analogy error')
     }
-  }, [readSSE, onAnalogydone, onError])
+  }, [onAnalogydone, onError])
 
-  // Cleanup on unmount
   useEffect(() => () => abortRef.current?.abort(), [])
 
   return { fire, fireAnalogy }

@@ -2,10 +2,18 @@ from app.models.highlight import HighlightRequest
 
 
 def build_fast_prompt(req: HighlightRequest) -> str:
+    dimension_instruction = ""
+    if req.dimension:
+        dimension_instruction = f"\nCRITICAL DIMENSION FILTER: Analyze strictly through the lens of '{req.dimension}'."
+    
+    custom_instruction = ""
+    if req.custom_query:
+        custom_instruction = f"\nCRITICAL: The user is studying the concept '{req.term}'. They have a specific follow-up query: '{req.custom_query}'. Directly address this missing detail within the exam context matrix."
+
     return f"""You are an elite exam-context explainer for {req.exam_profile.get('exam', 'UPSC')}, stage: {req.exam_profile.get('stage', 'prelims')}.
 
 Term: "{req.term}"
-Context from PDF: "{req.context_snippet}"
+Context from PDF: "{req.context_snippet}"{dimension_instruction}{custom_instruction}
 
 Output STRICTLY as valid JSON. Do not output generic dictionary definitions. Provide rigorous, high-density, authoritative exam insights. Use markdown formatting (like **bolding** and *italics*) within the JSON string values.
 
@@ -16,10 +24,25 @@ Output STRICTLY as valid JSON. Do not output generic dictionary definitions. Pro
 
 
 def build_deep_prompt(req: HighlightRequest) -> str:
+    dimension_instruction = ""
+    if req.dimension:
+        if req.dimension == "Legal/Polity":
+            dimension_instruction = "\nCRITICAL DIMENSION FILTER: Focus on administrative structure, official titles, and evolutionary governance."
+        elif req.dimension == "Socio-Economic":
+            dimension_instruction = "\nCRITICAL DIMENSION FILTER: Break down revenue architectures, merchant guilds, currency systems, and social stratification."
+        elif req.dimension == "Historiography/Debates":
+            dimension_instruction = "\nCRITICAL DIMENSION FILTER: Structure the answer in a clear 'Debate Matrix' outlining the conflicting schools of historical thought with evidence."
+        else:
+            dimension_instruction = f"\nCRITICAL DIMENSION FILTER: Analyze strictly through the lens of '{req.dimension}'."
+
+    custom_instruction = ""
+    if req.custom_query:
+        custom_instruction = f"\nCRITICAL: The user is studying the concept '{req.term}'. They have a specific follow-up query: '{req.custom_query}'. Directly address this missing detail within the exam context matrix."
+
     return f"""You are a top-tier mentor for {req.exam_profile.get('exam', 'UPSC')}.
 
 Term: "{req.term}"
-PDF context: "{req.context_snippet}"
+PDF context: "{req.context_snippet}"{dimension_instruction}{custom_instruction}
 
 Output STRICTLY as valid JSON. Provide rigorous, high-density, authoritative exam insights. The 3 bullets must be comprehensive, analytical sentences, not short fragments. Use markdown formatting (like **bolding** and *italics*) within the JSON string values.
 
